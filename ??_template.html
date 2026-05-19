@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经营会议数据看板</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+:root {
+  --bg-primary: #0a1628;
+  --bg-secondary: #0f1e36;
+  --bg-card: #132742;
+  --bg-card-hover: #1a3355;
+  --border: #1e3a5f;
+  --border-light: #2a4a7f;
+  --text-primary: #e8edf5;
+  --text-secondary: #8fa4c4;
+  --text-muted: #5a7090;
+  --accent: #1a73e8;
+  --accent-light: #4d94f5;
+  --accent-glow: rgba(26, 115, 232, 0.3);
+  --success: #00c853;
+  --warning: #ff9800;
+  --danger: #ff5252;
+  --info: #00bcd4;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 32px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.topbar h1 { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.topbar .subtitle { color: var(--text-secondary); font-size: 13px; margin-left: 12px; }
+
+.tab-group { display: flex; gap: 4px; }
+.tab-btn {
+  padding: 8px 24px; border: 1px solid var(--border); background: transparent;
+  color: var(--text-secondary); cursor: pointer; font-size: 14px;
+  border-radius: 4px; transition: all 0.2s;
+}
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab-btn:hover:not(.active) { border-color: var(--accent-light); color: var(--text-primary); }
+
+.container { max-width: 1440px; margin: 0 auto; padding: 24px 32px; }
+
+/* KPI Cards */
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; position: relative; overflow: hidden;
+}
+.kpi-card::after {
+  content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--accent);
+}
+.kpi-card.warning::after { background: var(--warning); }
+.kpi-card.success::after { background: var(--success); }
+.kpi-card .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.kpi-card .value { font-size: 28px; font-weight: 700; }
+.kpi-card .value .unit { font-size: 14px; color: var(--text-muted); margin-left: 4px; }
+.kpi-card .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+/* Section */
+.section { margin-bottom: 28px; }
+.section-title {
+  font-size: 16px; font-weight: 600; padding: 12px 0; border-bottom: 2px solid var(--border);
+  margin-bottom: 16px; color: var(--text-primary);
+}
+.section-title .dot { color: var(--accent); margin-right: 8px; }
+
+/* Charts */
+.chart-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.chart-container { width: 100%; height: 360px; }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  background: var(--bg-secondary); color: var(--text-secondary); font-weight: 500;
+  padding: 10px 12px; text-align: left; border-bottom: 2px solid var(--border);
+  white-space: nowrap; position: sticky; top: 0;
+}
+.data-table td {
+  padding: 8px 12px; border-bottom: 1px solid rgba(30, 58, 95, 0.5);
+}
+.data-table tr:hover td { background: rgba(26, 115, 232, 0.05); }
+.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Filters */
+.filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 6px 16px; border: 1px solid var(--border); background: transparent;
+  color: var(--text-secondary); cursor: pointer; border-radius: 4px; font-size: 13px;
+  transition: all 0.2s;
+}
+.filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Tags */
+.tag {
+  display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px;
+  font-weight: 500;
+}
+.tag-postpone { background: rgba(255,152,0,0.2); color: var(--warning); }
+.tag-new { background: rgba(0,200,83,0.2); color: var(--success); }
+.tag-delete { background: rgba(255,82,82,0.2); color: var(--danger); }
+.tag-advance { background: rgba(0,188,212,0.2); color: var(--info); }
+
+/* Expand toggle */
+.expand-btn { cursor: pointer; color: var(--accent-light); user-select: none; font-size: 14px; }
+.expand-btn:hover { color: var(--accent); }
+.expand-row { display: none; }
+.expand-row.open { display: table-row; }
+.expand-row td { background: rgba(10, 22, 40, 0.5); padding: 12px 16px; font-size: 12px; color: var(--text-secondary); }
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); z-index: 200; justify-content: center; align-items: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;
+}
+.modal h3 { margin-bottom: 16px; font-size: 18px; }
+.modal .close-btn {
+  float: right; background: none; border: none; color: var(--text-secondary);
+  font-size: 20px; cursor: pointer;
+}
+
+/* Comparison grid */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.compare-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.compare-value { font-size: 20px; font-weight: 700; }
+.compare-diff { font-size: 13px; margin-top: 2px; }
+.diff-up { color: var(--success); }
+.diff-down { color: var(--danger); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.loading { text-align: center; padding: 60px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<script id="embeddedData" type="application/json">{{DATA_PLACEHOLDER}}</script>
+
+<div class="topbar">
+  <div>
+    <h1 style="display:inline">经营会议数据看板</h1>
+    <span class="subtitle" id="meetingDate"></span>
+  </div>
+  <div class="tab-group">
+    <button class="tab-btn active" onclick="switchTab('current')">本次会议</button>
+    <button class="tab-btn" onclick="switchTab('last')">上次会议</button>
+  </div>
+</div>
+
+<div class="container" id="app">
+  <div class="loading">加载中...</div>
+</div>
+
+<!-- Modal for contract matching confirmation -->
+<div class="modal-overlay" id="matchModal">
+  <div class="modal" id="matchModalContent"></div>
+</div>
+
+<script>
+// ============================================================
+// DATA — embedded from data.json
+// ============================================================
+let allData = null;
+let currentTab = 'current';
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const el = document.getElementById('embeddedData');
+    allData = JSON.parse(el.textContent);
+    switchTab('current');
+  } catch(e) {
+    document.getElementById('app').innerHTML = '<div class="loading">数据加载失败: ' + e.message + '</div>';
+  }
+});
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
+  render(tab);
+}
+
+function data() { return allData[currentTab]; }
+
+// ============================================================
+// RENDER
+// ============================================================
+function render(tab) {
+  const d = allData[tab];
+  document.getElementById('meetingDate').textContent = '会议日期: ' + d.date;
+
+  let html = '';
+  html += renderKPI(d);
+  html += renderCompanyChart(d);
+  html += renderDepartmentTable(d);
+  html += renderChangeDetail(d);
+  html += renderBottomSection(d);
+
+  document.getElementById('app').innerHTML = html;
+
+  // Init charts (after DOM update)
+  setTimeout(() => {
+    initCompanyChart(d);
+    initDeptCharts(d);
+  }, 100);
+
+  // Rebind filter buttons
+  bindFilters();
+}
+
+// ============================================================
+// L1: KPI CARDS
+// ============================================================
+function renderKPI(d) {
+  const p3 = d.ppt_overview.p3_revenue;
+  const total = p3.find(r => r.dept === '合计') || p3[p3.length - 1];
+  const p4 = d.ppt_overview.p4_forecast;
+  const fcTotal = p4.length > 0 ? (p4.find(r => r.dept === '合计') || p4[p4.length - 1]) : null;
+
+  const revRate = total.revenue_rate || '';
+  const selfRate = total.self_rev_rate || '';
+
+  return `
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="label">营收完成</div>
+      <div class="value">${fmt(total.revenue_current)}<span class="unit">万元</span></div>
+      <div class="sub">年度指标 ${fmt(total.revenue_target)}万 | 完成率 ${revRate}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">自营营收</div>
+      <div class="value">${fmt(total.self_rev_current)}<span class="unit">万元</span></div>
+      <div class="sub">年度指标 ${fmt(total.self_rev_target)}万 | 完成率 ${selfRate}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">累计收款</div>
+      <div class="value">${fmt(total.collection)}<span class="unit">万元</span></div>
+      <div class="sub">同比 ${p3.length > 1 ? p3[0].revenue_yoy || '-' : '-'}</div>
+    </div>
+    <div class="kpi-card ${fcTotal && fcTotal.full_year_rate && parseFloat(fcTotal.full_year_rate) < 0.7 ? 'warning' : 'success'}">
+      <div class="label">全年预计营收</div>
+      <div class="value">${fcTotal ? fmt(fcTotal.full_year_forecast) : '-'}<span class="unit">万元</span></div>
+      <div class="sub">${fcTotal ? '指标占比 ' + (fcTotal.full_year_rate || '-') : ''}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">上期预测营收</div>
+      <div class="value">${fcTotal ? fmt(fcTotal.prev_forecast) : '-'}<span class="unit">万元</span></div>
+      <div class="sub">${fcTotal && fcTotal.prev_forecast > 0 ? '较上期 ' + (fcTotal.full_year_forecast > fcTotal.prev_forecast ? '↑ 上调' : '↓ 下调') : ''}</div>
+    </div>
+  </div>`;
+}
+
+function fmt(n) {
+  if (n == null || isNaN(n)) return '0';
+  return parseFloat(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+}
+
+function fmt2(n) {
+  if (n == null || isNaN(n)) return '0.00';
+  return parseFloat(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ============================================================
+// L1: COMPANY LINE CHART
+// ============================================================
+function renderCompanyChart(d) {
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>全公司计划 vs 完成</div>
+    <div class="chart-box"><div class="chart-container" id="companyChart"></div></div>
+  </div>`;
+}
+
+function initCompanyChart(d) {
+  const el = document.getElementById('companyChart');
+  if (!el) return;
+  const chart = echarts.init(el);
+
+  // Aggregate monthly plan/actual from all contracts
+  const planMonthly = new Array(12).fill(0);
+  const actualMonthly = new Array(12).fill(0);
+  const colPlanMonthly = new Array(12).fill(0);
+  const colActualMonthly = new Array(12).fill(0);
+
+  d.contracts.forEach(c => {
+    c.monthly_plan.forEach((v, i) => { planMonthly[i] += v; });
+    c.monthly_actual.forEach((v, i) => { actualMonthly[i] += v; });
+    c.monthly_collection_plan.forEach((v, i) => { colPlanMonthly[i] += v; });
+    c.monthly_collection_actual.forEach((v, i) => { colActualMonthly[i] += v; });
+  });
+
+  const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  const option = {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['产值计划','产值完成','收款计划','收款完成'], textStyle: { color: '#8fa4c4' }, top: 0 },
+    grid: { left: 60, right: 30, top: 40, bottom: 30 },
+    xAxis: { type: 'category', data: months, axisLabel: { color: '#8fa4c4' }, axisLine: { lineStyle: { color: '#1e3a5f' } } },
+    yAxis: { type: 'value', name: '万元', nameTextStyle: { color: '#8fa4c4' }, axisLabel: { color: '#8fa4c4' }, splitLine: { lineStyle: { color: '#1e3a5f' } } },
+    series: [
+      { name: '产值计划', type: 'line', data: planMonthly.map(v => +v.toFixed(2)), smooth: true, lineStyle: { color: '#1a73e8', width: 2 }, itemStyle: { color: '#1a73e8' }, symbol: 'circle', symbolSize: 6 },
+      { name: '产值完成', type: 'line', data: actualMonthly.map(v => +v.toFixed(2)), smooth: true, lineStyle: { color: '#ff9800', width: 2 }, itemStyle: { color: '#ff9800' }, symbol: 'diamond', symbolSize: 6 },
+      { name: '收款计划', type: 'line', data: colPlanMonthly.map(v => +v.toFixed(2)), smooth: true, lineStyle: { color: '#4d94f5', width: 2, type: 'dashed' }, itemStyle: { color: '#4d94f5' }, symbol: 'circle', symbolSize: 5 },
+      { name: '收款完成', type: 'line', data: colActualMonthly.map(v => +v.toFixed(2)), smooth: true, lineStyle: { color: '#ff5252', width: 2, type: 'dashed' }, itemStyle: { color: '#ff5252' }, symbol: 'diamond', symbolSize: 5 },
+    ]
+  };
+  chart.setOption(option);
+  window.addEventListener('resize', () => chart.resize());
+}
+
+// ============================================================
+// L2: DEPARTMENT TABLE WITH EXPAND
+// ============================================================
+function renderDepartmentTable(d) {
+  const deptOrder = ['数字建造中心','智能运管中心','数智管理中心','福建分公司','广东分公司','产品研发中心','市场经营拓展中心'];
+  const p3 = d.ppt_overview.p3_revenue;
+  const p4 = d.ppt_overview.p4_forecast;
+
+  // Aggregate by dept
+  const deptData = {};
+  deptOrder.forEach(dn => { deptData[dn] = { plan: new Array(12).fill(0), actual: new Array(12).fill(0), colPlan: new Array(12).fill(0), colActual: new Array(12).fill(0) }; });
+  d.contracts.forEach(c => {
+    const dn = c.dept;
+    if (!deptData[dn]) return;
+    c.monthly_plan.forEach((v, i) => { deptData[dn].plan[i] += v; });
+    c.monthly_actual.forEach((v, i) => { deptData[dn].actual[i] += v; });
+    c.monthly_collection_plan.forEach((v, i) => { deptData[dn].colPlan[i] += v; });
+    c.monthly_collection_actual.forEach((v, i) => { deptData[dn].colActual[i] += v; });
+  });
+
+  // Compute transfer analysis
+  const transferData = computeTransferAnalysis(d);
+
+  let rows = '';
+  deptOrder.forEach((dn, idx) => {
+    const dd = deptData[dn];
+    const p3row = p3.find(r => r.dept === dn) || {};
+    const p4row = p4.find(r => r.dept === dn) || {};
+    const planTotal = dd.plan.reduce((a,b)=>a+b,0);
+    const actualTotal = dd.actual.reduce((a,b)=>a+b,0);
+    const target = p3row.revenue_target || 0;
+    const td = transferData[dn] || { transferIn: 0, transferOut: 0, inDetails: [], outDetails: [] };
+
+    rows += `
+    <tr>
+      <td>${dn}</td>
+      <td class="num">${fmt(target)}</td>
+      <td><div class="chart-container" id="deptChart${idx}" style="height:60px;width:200px;"></div></td>
+      <td class="num">${fmt(planTotal)}</td>
+      <td class="num">${fmt(actualTotal)}</td>
+      <td class="num">${fmt(td.transferOut)}</td>
+      <td class="num">${fmt(td.transferIn)}</td>
+      <td><span class="expand-btn" onclick="toggleExpand(this, 'deptExpand${idx}')">▶</span></td>
+    </tr>
+    <tr class="expand-row" id="deptExpand${idx}">
+      <td colspan="8">
+        <strong>推迟到本月的计划值:</strong> ${td.inDetails.length > 0 ? td.inDetails.map(x => x.fromMonth + '月转入 ' + fmt(x.amount) + '万').join('；') : '无'}<br>
+        <strong>推迟到下月的计划值:</strong> ${td.outDetails.length > 0 ? td.outDetails.map(x => '→' + x.toMonth + '月转出 ' + fmt(x.amount) + '万').join('；') : '无'}
+      </td>
+    </tr>`;
+  });
+
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>部门明细</div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>部门</th><th>年度指标(万)</th><th>计划 vs 完成</th>
+            <th>计划合计</th><th>完成合计</th>
+            <th>转移出</th><th>转移入</th><th>展开</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function initDeptCharts(d) {
+  const deptOrder = ['数字建造中心','智能运管中心','数智管理中心','福建分公司','广东分公司','产品研发中心','市场经营拓展中心'];
+  const deptData = {};
+  deptOrder.forEach(dn => { deptData[dn] = { plan: new Array(12).fill(0), actual: new Array(12).fill(0) }; });
+  d.contracts.forEach(c => {
+    const dn = c.dept;
+    if (!deptData[dn]) return;
+    c.monthly_plan.forEach((v, i) => { deptData[dn].plan[i] += v; });
+    c.monthly_actual.forEach((v, i) => { deptData[dn].actual[i] += v; });
+  });
+
+  deptOrder.forEach((dn, idx) => {
+    const el = document.getElementById('deptChart' + idx);
+    if (!el) return;
+    const chart = echarts.init(el);
+    const dd = deptData[dn];
+    const planTotal = dd.plan.reduce((a,b)=>a+b,0);
+    const actualTotal = dd.actual.reduce((a,b)=>a+b,0);
+    const maxVal = Math.max(planTotal, actualTotal, 1);
+
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 0, right: 0, top: 4, bottom: 4 },
+      xAxis: { show: false, data: ['计划','完成'] },
+      yAxis: { show: false, max: maxVal * 1.2 },
+      series: [
+        { type: 'bar', data: [{value: planTotal, itemStyle: {color: '#1a73e8'}}, {value: actualTotal, itemStyle: {color: '#ff9800'}}], barWidth: 16, barGap: '30%' }
+      ]
+    });
+  });
+  window.addEventListener('resize', () => {
+    deptOrder.forEach((dn, idx) => {
+      const el = document.getElementById('deptChart' + idx);
+      if (el) { const c = echarts.getInstanceByDom(el); if (c) c.resize(); }
+    });
+  });
+}
+
+// ============================================================
+// L2/L3: TRANSFER ANALYSIS
+// ============================================================
+function computeTransferAnalysis(d) {
+  // Always compare current vs last meetings (not tab-dependent)
+  if (!allData || !allData.current || !allData.last) return {};
+
+  const curContracts = allData.current.contracts;
+  const lastContracts = allData.last.contracts;
+
+  // Build last contract lookup by contract_no
+  const lastByNo = {};
+  lastContracts.forEach(c => { lastByNo[c.contract_no] = c; });
+
+  const deptOrder = ['数字建造中心','智能运管中心','数智管理中心','福建分公司','广东分公司','产品研发中心','市场经营拓展中心'];
+  const deptResult = {};
+  deptOrder.forEach(dn => {
+    deptResult[dn] = { transferIn: 0, transferOut: 0, inDetails: [], outDetails: [], changes: [] };
+  });
+
+  curContracts.forEach(cur => {
+    const last = lastByNo[cur.contract_no];
+    if (!last) return; // New contract, skip for transfer analysis
+
+    const dept = cur.dept;
+    if (!deptResult[dept]) return;
+
+    // Compare monthly plans
+    for (let m = 0; m < 12; m++) {
+      const delta = cur.monthly_plan[m] - last.monthly_plan[m];
+      if (Math.abs(delta) < 0.01) continue;
+
+      if (delta < 0) {
+        // Plan decreased — find where it went
+        let found = false;
+        for (let n = m + 1; n < 12; n++) {
+          const d2 = cur.monthly_plan[n] - last.monthly_plan[n];
+          if (d2 > 0.01) {
+            const transferAmt = Math.min(-delta, d2);
+            deptResult[dept].transferOut += transferAmt;
+            deptResult[dept].outDetails.push({
+              contractName: cur.contract_name,
+              fromMonth: m + 1,
+              toMonth: n + 1,
+              amount: transferAmt
+            });
+            deptResult[dept].changes.push({
+              contractName: cur.contract_name,
+              type: '推迟',
+              fromMonth: m + 1,
+              toMonth: n + 1,
+              amount: transferAmt,
+              isOut: true
+            });
+            found = true;
+          }
+        }
+        if (!found) {
+          deptResult[dept].changes.push({
+            contractName: cur.contract_name,
+            type: '删除',
+            fromMonth: m + 1,
+            toMonth: null,
+            amount: -delta,
+            isOut: true
+          });
+        }
+      } else {
+        // Plan increased
+        let found = false;
+        for (let n = 0; n < m; n++) {
+          const d2 = cur.monthly_plan[n] - last.monthly_plan[n];
+          if (d2 < -0.01) {
+            const transferAmt = Math.min(delta, -d2);
+            deptResult[dept].transferIn += transferAmt;
+            deptResult[dept].inDetails.push({
+              contractName: cur.contract_name,
+              fromMonth: n + 1,
+              toMonth: m + 1,
+              amount: transferAmt
+            });
+            deptResult[dept].changes.push({
+              contractName: cur.contract_name,
+              type: '推迟',
+              fromMonth: n + 1,
+              toMonth: m + 1,
+              amount: transferAmt,
+              isIn: true
+            });
+            found = true;
+          }
+        }
+        if (!found) {
+          deptResult[dept].changes.push({
+            contractName: cur.contract_name,
+            type: '新增',
+            fromMonth: null,
+            toMonth: m + 1,
+            amount: delta,
+            isIn: true
+          });
+        }
+      }
+    }
+  });
+
+  // Sort changes by amount descending
+  Object.keys(deptResult).forEach(dn => {
+    deptResult[dn].changes.sort((a, b) => b.amount - a.amount);
+  });
+
+  return deptResult;
+}
+
+// ============================================================
+// L3: CHANGE DETAIL TABLE
+// ============================================================
+function renderChangeDetail(d) {
+  const td = computeTransferAnalysis(d);
+  if (!td || Object.keys(td).length === 0) {
+    return '<div class="section"><div class="section-title"><span class="dot">◆</span>计划转移明细</div><p style="color:var(--text-muted)">需要同时加载两次会议数据才能进行分析</p></div>';
+  }
+
+  // Collect all changes
+  let allChanges = [];
+  Object.entries(td).forEach(([dept, data]) => {
+    data.changes.forEach(c => {
+      allChanges.push({ ...c, dept: dept });
+    });
+  });
+
+  // Sort by amount descending
+  allChanges.sort((a, b) => b.amount - a.amount);
+
+  let rows = '';
+  allChanges.forEach((c, i) => {
+    const tagClass = c.type === '推迟' ? 'tag-postpone' : c.type === '新增' ? 'tag-new' : c.type === '删除' ? 'tag-delete' : 'tag-advance';
+    const thisMonthIn = c.type === '推迟' && c.isIn ? c.amount : 0;
+    const nextMonthOut = c.type === '推迟' && c.isOut ? c.amount : 0;
+
+    rows += `
+    <tr class="change-row" data-type="${c.type}">
+      <td>${c.dept}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.contractName)}">${c.contractName}</td>
+      <td><span class="tag ${tagClass}">${c.type}</span></td>
+      <td>${c.fromMonth ? c.fromMonth + '月' : '-'}</td>
+      <td>${c.toMonth ? c.toMonth + '月' : '-'}</td>
+      <td class="num">${fmt(c.amount)}</td>
+      <td class="num">${fmt(thisMonthIn)}</td>
+      <td class="num">${fmt(nextMonthOut)}</td>
+    </tr>`;
+  });
+
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>计划转移明细 <span style="color:var(--text-muted);font-size:12px;">（按金额降序）</span></div>
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="filterChanges('全部', this)">全部</button>
+      <button class="filter-btn" onclick="filterChanges('推迟', this)">推迟</button>
+      <button class="filter-btn" onclick="filterChanges('新增', this)">新增</button>
+      <button class="filter-btn" onclick="filterChanges('删除', this)">删除</button>
+      <button class="filter-btn" onclick="filterChanges('提前', this)">提前</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>部门</th><th>合同名称</th><th>变化类型</th>
+            <th>原计划月</th><th>目标月</th><th>金额(万)</th>
+            <th>推迟→本月</th><th>推迟→下月</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">暂无变化数据</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function filterChanges(type, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.change-row').forEach(row => {
+    if (type === '全部') { row.style.display = ''; }
+    else { row.style.display = row.dataset.type === type ? '' : 'none'; }
+  });
+}
+
+function bindFilters() {
+  // Filters are handled via onclick in HTML
+}
+
+// ============================================================
+// L4: CONTRACT MATCHING + TOP10 + RECEIVABLES
+// ============================================================
+function renderBottomSection(d) {
+  let html = '';
+
+  // Contract matching report
+  html += renderContractMatch(d);
+
+  // TOP10
+  html += renderTop10(d);
+
+  // Receivables
+  html += renderReceivables(d);
+
+  return html;
+}
+
+function renderContractMatch(d) {
+  if (!allData || !allData.current || !allData.last) return '';
+
+  const curContracts = allData.current.contracts;
+  const lastContracts = allData.last.contracts;
+
+  // Build lookup
+  const curByNo = {};
+  curContracts.forEach(c => { if (c.contract_no) curByNo[c.contract_no] = c; });
+  const lastByNo = {};
+  lastContracts.forEach(c => { if (c.contract_no) lastByNo[c.contract_no] = c; });
+
+  // Find matched (same contract_no)
+  const matchedNos = new Set();
+  Object.keys(curByNo).forEach(no => { if (lastByNo[no]) matchedNos.add(no); });
+
+  // Find contracts only in one meeting
+  const onlyCurrent = curContracts.filter(c => c.contract_no && !lastByNo[c.contract_no]);
+  const onlyLast = lastContracts.filter(c => c.contract_no && !curByNo[c.contract_no]);
+
+  // Fuzzy match for unmatched contracts
+  const fuzzyMatches = [];
+  const unmatched = [];
+
+  onlyCurrent.forEach(cur => {
+    let bestMatch = null;
+    let bestScore = 0;
+    onlyLast.forEach(last => {
+      const score = nameSimilarity(cur.contract_name, last.contract_name);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = last;
+      }
+    });
+
+    const amountDiff = bestMatch ? Math.abs(cur.contract_amount - bestMatch.contract_amount) / Math.max(cur.contract_amount, 1) : 1;
+
+    if (bestScore > 0.6 && amountDiff < 0.15) {
+      fuzzyMatches.push({ cur, last: bestMatch, score: bestScore, amountDiff });
+    } else if (bestScore > 0.35 && amountDiff < 0.3) {
+      fuzzyMatches.push({ cur, last: bestMatch, score: bestScore, amountDiff, uncertain: true });
+    } else {
+      unmatched.push({ cur, bestMatch, score: bestScore });
+    }
+  });
+
+  const confident = fuzzyMatches.filter(m => !m.uncertain);
+  const uncertain = fuzzyMatches.filter(m => m.uncertain);
+
+  let matchRows = '';
+  confident.forEach(m => {
+    matchRows += `<tr>
+      <td style="color:var(--success)">✓ 自动匹配</td>
+      <td title="${esc(m.cur.contract_name)}">${trunc(m.cur.contract_name, 30)}</td>
+      <td class="num">${fmt(m.cur.contract_amount)}</td>
+      <td title="${esc(m.last.contract_name)}">${trunc(m.last.contract_name, 30)}</td>
+      <td class="num">${fmt(m.last.contract_amount)}</td>
+      <td class="num">${(m.score*100).toFixed(0)}%</td>
+      <td class="num">${(m.amountDiff*100).toFixed(0)}%</td>
+    </tr>`;
+  });
+
+  uncertain.forEach(m => {
+    matchRows += `<tr>
+      <td style="color:var(--warning)">⚠ 待确认</td>
+      <td title="${esc(m.cur.contract_name)}">${trunc(m.cur.contract_name, 30)}</td>
+      <td class="num">${fmt(m.cur.contract_amount)}</td>
+      <td title="${esc(m.last.contract_name)}">${trunc(m.last.contract_name, 30)}</td>
+      <td class="num">${fmt(m.last.contract_amount)}</td>
+      <td class="num">${(m.score*100).toFixed(0)}%</td>
+      <td class="num">${(m.amountDiff*100).toFixed(0)}%</td>
+    </tr>`;
+  });
+
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>待签合同匹配报告</div>
+    <div style="margin-bottom:12px;font-size:13px;color:var(--text-secondary);">
+      完全匹配: <b style="color:var(--success)">${matchedNos.size}</b> 个（合同编号一致）&nbsp;&nbsp;
+      自动匹配: <b style="color:var(--success)">${confident.length}</b> 个（名称+金额相似）&nbsp;&nbsp;
+      待确认: <b style="color:var(--warning)">${uncertain.length}</b> 个 &nbsp;&nbsp;
+      未匹配: <b style="color:var(--danger)">${unmatched.length}</b> 个（本次新增）
+    </div>
+    ${matchRows ? `
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead><tr><th>状态</th><th>本次合同</th><th>金额(万)</th><th>匹配上次合同</th><th>金额(万)</th><th>名称相似度</th><th>金额差异</th></tr></thead>
+        <tbody>${matchRows}</tbody>
+      </table>
+    </div>` : '<p style="color:var(--text-muted);">无需匹配，所有合同已通过编号关联</p>'}
+  </div>`;
+}
+
+function renderTop10(d) {
+  const top10 = d.top10.top10_list;
+  let rows = top10.map(t => `
+    <tr>
+      <td>${t.dept}</td>
+      <td title="${esc(t.contract_name)}">${trunc(t.contract_name, 40)}</td>
+      <td class="num">${fmt(t.contract_amount)}</td>
+      <td class="num">${fmt(t.plan_amount)}</td>
+      <td class="num">${fmt(t.actual)}</td>
+      <td class="num">${t.actual > 0 ? (t.actual / Math.max(t.plan_amount, 1) * 100).toFixed(0) + '%' : '0%'}</td>
+    </tr>
+  `).join('');
+
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>重点项目 TOP 10</div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead><tr><th>部门</th><th>合同名称</th><th>合同金额(万)</th><th>计划金额(万)</th><th>实际完成</th><th>完成率</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderReceivables(d) {
+  const recv = d.receivables_summary;
+  if (!recv || recv.length === 0) return '';
+
+  let rows = recv.map(r => `
+    <tr>
+      <td>${r.dept}</td>
+      <td class="num">${fmt(r.balance_2024end)}</td>
+      <td class="num">${fmt(r.balance_2025end)}</td>
+      <td class="num">${fmt(r.balance_jan23)}</td>
+      <td class="num">${fmt(r.balance_feb11)}</td>
+    </tr>
+  `).join('');
+
+  return `
+  <div class="section">
+    <div class="section-title"><span class="dot">◆</span>应收未收趋势</div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead><tr><th>部门</th><th>2024年末余额</th><th>2025年末余额</th><th>1月23日余额</th><th>2月11日余额</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function toggleExpand(btn, rowId) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const isOpen = row.classList.contains('open');
+  row.classList.toggle('open', !isOpen);
+  btn.textContent = isOpen ? '▶' : '▼';
+}
+
+function nameSimilarity(a, b) {
+  if (!a || !b) return 0;
+  // Normalize: remove common suffixes, punctuation, whitespace
+  const norm = s => s.replace(/[（(].*?[)）]/g, '').replace(/[，,、。；;：:\-_/\\]/g, '').replace(/\s+/g, '').toLowerCase();
+  const na = norm(a);
+  const nb = norm(b);
+  if (na === nb) return 1.0;
+
+  // Jaccard of 2-grams
+  const grams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.substring(i, i + 2)); return g; };
+  const ga = grams(na);
+  const gb = grams(nb);
+  let intersection = 0;
+  ga.forEach(g => { if (gb.has(g)) intersection++; });
+  const union = ga.size + gb.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function trunc(s, n) { return s && s.length > n ? s.substring(0, n) + '...' : (s || ''); }
+
+</script>
+
+</body>
+</html>
